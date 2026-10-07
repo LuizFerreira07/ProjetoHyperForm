@@ -20,12 +20,35 @@ const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } cat
 const hash = (s) => btoa(unescape(encodeURIComponent(s))); // demo apenas! use backend/bcrypt em produção
 const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
+/* ============ ÍCONES (SVG inline, sem dependências) ============ */
+const P = {
+  dumbbell: "M6.5 6.5v11 M17.5 6.5v11 M3.5 9v6 M20.5 9v6 M6.5 12h11",
+  calendar: "M8 2v4 M16 2v4 M3 10h18 M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
+  chart: "M3 3v18h18 M7 15l4-4 3 3 5-6",
+  clock: "M12 6v6l4 2 M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z",
+  sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4",
+  moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
+  logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9",
+  x: "M18 6 6 18 M6 6l12 12",
+  plus: "M12 5v14 M5 12h14",
+  pencil: "M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z",
+  check: "M20 6 9 17l-5-5",
+  play: "M6 4l14 8-14 8z",
+  left: "M19 12H5 M12 19l-7-7 7-7",
+  right: "M5 12h14 M12 5l7 7-7 7",
+};
+const Icon = ({ n, s = 18 }) => (
+  <svg className="i" width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={P[n]} />
+  </svg>
+);
+
 function Gif({ src, alt, size = 64 }) {
   const [err, setErr] = useState(false);
   return err || !src ? (
-    <div className="gifph" style={{ width: size, height: size }}>🏋️</div>
+    <div className="gifph" style={{ width: size, maxWidth: "100%", aspectRatio: "1" }}><Icon n="dumbbell" s={Math.round(size / 2.5)} /></div>
   ) : (
-    <img className="gif" src={src} alt={alt} style={{ width: size, height: size }} onError={() => setErr(true)} />
+    <img className="gif" src={src} alt={alt} style={{ width: size, maxWidth: "100%", aspectRatio: "1" }} onError={() => setErr(true)} />
   );
 }
 
@@ -58,7 +81,7 @@ function Auth({ onLogin }) {
 
   return (
     <div className="auth">
-      <div className="logo big"><span className="lg">💪</span> HYPERFORM.</div>
+      <div className="logo big"><span className="lg"><Icon n="dumbbell" s={18} /></span> HYPERFORM.</div>
       <h1>{mode === "login" ? "Bem-vindo de volta." : "Crie sua conta."}</h1>
       <p className="sub">{mode === "login" ? "Entre para continuar seu treino." : "Comece a construir sua rotina."}</p>
       <form onSubmit={submit}>
@@ -106,7 +129,7 @@ function Planner({ exercises, plan, setPlan, onStart, onAdd }) {
       </div>
       <div className="row between mt">
         <h3>A fila <span className="tag">{list.length}</span></h3>
-        <button className="link" onClick={() => setPicking(!picking)}>＋ Adicionar exercício</button>
+        <button className="link" onClick={() => setPicking(!picking)}><Icon n="plus" s={16} /> Adicionar exercício</button>
       </div>
       {picking && (
         <div className="card">
@@ -116,20 +139,22 @@ function Planner({ exercises, plan, setPlan, onStart, onAdd }) {
           {exercises.every((e) => plan.includes(e.id)) && <p className="sub">Todos os exercícios já estão no plano.</p>}
         </div>
       )}
+      <div className="grid">
       {list.map((e) => (
         <div className="card ex" key={e.id}>
           <Gif src={e.gif} alt={e.name} />
           <div className="grow">
             <b>{e.name}</b>
             <div className="row"><span className="tag">{e.muscle}</span><small>{e.sets} séries × {e.reps} reps</small></div>
-            <small>⏱ {e.rest}s de descanso</small>
+            <small className="ic"><Icon n="clock" s={12} /> {e.rest}s de descanso</small>
           </div>
-          <button className="ico" onClick={() => setPlan(plan.filter((x) => x !== e.id))} title="Remover">✕</button>
+          <button className="ico" onClick={() => setPlan(plan.filter((x) => x !== e.id))} title="Remover" aria-label="Remover"><Icon n="x" /></button>
         </div>
       ))}
+      </div>
       <div className="sticky">
         <small>{list.length} exercícios · {sets} séries · ~{Math.round(sets * 1.5)} min</small>
-        <button className="cta" disabled={!list.length} onClick={() => onStart(list)}>▷ Iniciar treino</button>
+        <button className="cta" disabled={!list.length} onClick={() => onStart(list)}><Icon n="play" s={16} /> Iniciar treino</button>
       </div>
     </>
   );
@@ -156,11 +181,12 @@ function Exercises({ exercises, setExercises }) {
       <h1>Encontre seu próximo movimento.</h1>
       <p className="sub">Os exercícios certos para o seu treino.</p>
       <input placeholder="Buscar exercícios..." value={q} onChange={(e) => setQ(e.target.value)} />
-      <button className="cta" onClick={() => setModal(blank)}>＋ Exercício personalizado</button>
+      <button className="cta" onClick={() => setModal(blank)}><Icon n="plus" s={18} /> Exercício personalizado</button>
       <div className="chips">
         {["Todos", ...MUSCLES].map((x) => <button key={x} className={"chip" + (m === x ? " on" : "")} onClick={() => setM(x)}>{x}</button>)}
       </div>
       <small className="sub">{shown.length} exercícios · Toque para ver as instruções</small>
+      <div className="grid">
       {shown.map((e) => (
         <div className="card" key={e.id}>
           <div className="ex" onClick={() => setOpen(open === e.id ? null : e.id)}>
@@ -168,9 +194,9 @@ function Exercises({ exercises, setExercises }) {
             <div className="grow">
               <b>{e.name}</b>
               <div className="row"><span className="tag">{e.muscle}</span><small>{e.sets} séries × {e.reps} reps</small></div>
-              <small>⏱ {e.rest}s de descanso</small>
+              <small className="ic"><Icon n="clock" s={12} /> {e.rest}s de descanso</small>
             </div>
-            <button className="ico" onClick={(ev) => { ev.stopPropagation(); setModal(e); }}>✎</button>
+            <button className="ico" onClick={(ev) => { ev.stopPropagation(); setModal(e); }} aria-label="Editar"><Icon n="pencil" /></button>
           </div>
           {open === e.id && (
             <div className="detail">
@@ -180,10 +206,11 @@ function Exercises({ exercises, setExercises }) {
           )}
         </div>
       ))}
+      </div>
       {modal && (
         <div className="overlay" onClick={() => setModal(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="row between"><h3>{modal.id ? "Editar exercício" : "Faça o seu"}</h3><button className="ico" onClick={() => setModal(null)}>✕</button></div>
+            <div className="row between"><h3>{modal.id ? "Editar exercício" : "Faça o seu"}</h3><button className="ico" onClick={() => setModal(null)} aria-label="Fechar"><Icon n="x" /></button></div>
             <label>Nome do exercício</label>
             <input placeholder="ex.: Stiff com halteres" value={modal.name} onChange={(e) => setModal({ ...modal, name: e.target.value })} />
             <label>Músculo alvo</label>
@@ -197,7 +224,7 @@ function Exercises({ exercises, setExercises }) {
               <div><label>Reps</label><input value={modal.reps} onChange={(e) => setModal({ ...modal, reps: e.target.value })} /></div>
               <div><label>Desc. (s)</label><input type="number" value={modal.rest} onChange={(e) => setModal({ ...modal, rest: +e.target.value })} /></div>
             </div>
-            <button className="cta" onClick={saveEx}>✓ {modal.id ? "Salvar" : "Criar exercício"}</button>
+            <button className="cta" onClick={saveEx}><Icon n="check" s={18} /> {modal.id ? "Salvar" : "Criar exercício"}</button>
           </div>
         </div>
       )}
@@ -220,13 +247,15 @@ function Progress({ history }) {
       </div>
       <h3 className="mt">Histórico de treinos</h3>
       {history.length === 0 && <p className="sub">Nenhum treino ainda. Bora começar!</p>}
+      <div className="grid">
       {[...history].reverse().map((h, i) => (
         <div className="card ex" key={i}>
-          <div className="okbox">✓</div>
+          <div className="okbox"><Icon n="check" s={20} /></div>
           <div className="grow"><b>{h.title}</b><br /><small>{new Date(h.date).toLocaleDateString("pt-BR")} · {h.sets} séries</small></div>
           <b className="lime">{fmt(h.seconds)}</b>
         </div>
       ))}
+      </div>
     </>
   );
 }
@@ -260,7 +289,7 @@ function Live({ list, onFinish, onCancel }) {
     <>
       <div className="row between">
         <div><h2 style={{ margin: 0 }}>Seu treino está ativo</h2><small>Peito & Tríceps</small></div>
-        <span className="tag lime">● Em andamento</span>
+        <span className="tag lime"><span className="dot" /> Em andamento</span>
       </div>
       <div className="card stats">
         <div><b>{fmt(elapsed)}</b><small>Total</small></div>
@@ -278,13 +307,13 @@ function Live({ list, onFinish, onCancel }) {
             <button key={n} className={"setbtn" + (n < done[idx] ? " on" : "")} onClick={() => mark(n)}>{n + 1}</button>
           ))}
         </div>
-        {resting && <button className="link" onClick={() => setResting(false)}>⏱ Descansando ({e.rest}s sugeridos) — toque para retomar</button>}
+        {resting && <button className="link" onClick={() => setResting(false)}><Icon n="clock" s={14} /> Descansando ({e.rest}s sugeridos) — toque para retomar</button>}
       </div>
       <div className="row mt">
-        <button className="ghost" disabled={idx === 0} onClick={() => setIdx(idx - 1)}>← Anterior</button>
+        <button className="ghost" disabled={idx === 0} onClick={() => setIdx(idx - 1)}><Icon n="left" s={16} /> Anterior</button>
         {idx < list.length - 1
-          ? <button className="cta" onClick={() => setIdx(idx + 1)}>Próximo →</button>
-          : <button className="cta" onClick={finish}>Finalizar ✓</button>}
+          ? <button className="cta" onClick={() => setIdx(idx + 1)}>Próximo <Icon n="right" s={16} /></button>
+          : <button className="cta" onClick={finish}>Finalizar <Icon n="check" s={16} /></button>}
       </div>
       <button className="link" onClick={onCancel}>Cancelar treino</button>
     </>
@@ -309,15 +338,15 @@ export default function FormApp() {
   const logout = () => { save("form_session", null); setUser(null); setLive(null); };
 
   return (
-    <div className={"app" + (light ? " light" : "")}>
+    <div className={"app" + (user ? " in" : "") + (light ? " light" : "")}>
       <style>{CSS}</style>
       {!user ? <Auth onLogin={login} /> : (
         <>
           <header>
-            <div className="logo"><span className="lg">💪</span> HYPERFORM.</div>
+            <div className="logo"><span className="lg"><Icon n="dumbbell" s={18} /></span> HYPERFORM.</div>
             <div className="row">
-              <button className="ico" onClick={() => setLight(!light)} title="Tema">☀</button>
-              <button className="ico" onClick={logout} title={`Sair (${user.name})`}>⎋</button>
+              <button className="ico" onClick={() => setLight(!light)} title="Tema" aria-label="Alternar tema"><Icon n={light ? "moon" : "sun"} /></button>
+              <button className="ico" onClick={logout} title={`Sair (${user.name})`} aria-label="Sair"><Icon n="logout" /></button>
             </div>
           </header>
           <main>
@@ -332,8 +361,8 @@ export default function FormApp() {
             )}
           </main>
           <nav>
-            {[["planner", "📅", "Planner"], ["exercises", "🏋️", "Exercícios"], ["progress", "📈", "Progresso"]].map(([k, i, l]) => (
-              <button key={k} className={tab === k && !live ? "on" : ""} onClick={() => { setLive(null); setTab(k); }}><span>{i}</span>{l}</button>
+            {[["planner", "calendar", "Planner"], ["exercises", "dumbbell", "Exercícios"], ["progress", "chart", "Progresso"]].map(([k, i, l]) => (
+              <button key={k} className={tab === k && !live ? "on" : ""} onClick={() => { setLive(null); setTab(k); }}><Icon n={i} s={22} /><span>{l}</span></button>
             ))}
           </nav>
         </>
@@ -343,52 +372,83 @@ export default function FormApp() {
 }
 
 const CSS = `
-*{box-sizing:border-box}
-.app{--bg:#121412;--card:#1a1c1a;--line:#2a2d2a;--tx:#f2f4f0;--mut:#8c918a;--lime:#c6f432;
- max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);color:var(--tx);font-family:Inter,system-ui,sans-serif;display:flex;flex-direction:column;position:relative}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+.app{--bg:#121412;--card:#1a1c1a;--line:#2a2d2a;--tx:#f2f4f0;--mut:#8c918a;--lime:#c6f432;--nav:64px;--side:230px;
+ min-height:100dvh;background:var(--bg);color:var(--tx);font-family:Inter,system-ui,sans-serif;display:flex;flex-direction:column}
 .app.light{--bg:#f6f7f3;--card:#fff;--line:#e2e5dc;--tx:#141612;--mut:#6b705f}
-header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line)}
-main{flex:1;padding:18px 18px 150px;overflow-y:auto}
-h1{font-size:30px;line-height:1.05;margin:8px 0;font-weight:800;letter-spacing:-.5px}
-h2{font-size:24px;margin:8px 0;font-weight:800}h3{margin:0;font-size:17px}
-.sub{color:var(--mut);font-size:14px}small{color:var(--mut);font-size:12px}
-.logo{font-weight:800;font-size:22px;display:flex;gap:8px;align-items:center}.logo.big{font-size:32px;margin-bottom:24px}
-.lg{background:var(--lime);border-radius:10px;padding:2px 6px;font-size:16px}
-.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}.grow{flex:1}.mt{margin-top:22px}.center{display:flex;justify-content:center;margin:10px 0}
+.i{flex-shrink:0;vertical-align:middle}
+/* ---------- base: MOBILE ---------- */
+header{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;justify-content:space-between;align-items:center;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top));border-bottom:1px solid var(--line)}
+main{flex:1;width:100%;max-width:1000px;margin:0 auto;padding:16px 16px calc(var(--nav) + 150px + env(safe-area-inset-bottom))}
+h1{font-size:clamp(26px,7vw,38px);line-height:1.05;margin:8px 0;font-weight:800;letter-spacing:-.5px}
+h2{font-size:clamp(20px,5vw,26px);margin:8px 0;font-weight:800}h3{margin:0;font-size:17px}
+.sub{color:var(--mut);font-size:14px;line-height:1.5}small{color:var(--mut);font-size:12px}
+.ic{display:inline-flex;align-items:center;gap:4px}
+.logo{font-weight:800;font-size:20px;display:flex;gap:8px;align-items:center}.logo.big{font-size:clamp(28px,9vw,36px);margin-bottom:24px}
+.lg{background:var(--lime);color:#111;border-radius:10px;width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}.grow{flex:1;min-width:0}.mt{margin-top:22px}.center{display:flex;justify-content:center;margin:10px 0}
+.grid{display:grid;grid-template-columns:1fr;gap:0 14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0}
 .ex{display:flex;gap:12px;align-items:center;cursor:pointer}
+.ex b{overflow-wrap:anywhere}
 .gif,.gifph{border-radius:12px;object-fit:cover;background:#fff;flex-shrink:0}
-.gifph{display:flex;align-items:center;justify-content:center;background:var(--line);font-size:24px}
-.tag{background:var(--line);color:var(--mut);font-size:11px;padding:2px 8px;border-radius:6px}.tag.lime{color:var(--lime);background:#c6f43222}
+.gifph{display:flex;align-items:center;justify-content:center;background:var(--line);color:var(--mut)}
+.tag{display:inline-flex;align-items:center;gap:6px;background:var(--line);color:var(--mut);font-size:11px;padding:3px 8px;border-radius:6px}.tag.lime{color:var(--lime);background:#c6f43222}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--lime)}
 .lime{color:var(--lime)}
-input,textarea{width:100%;background:transparent;border:1px solid var(--line);border-radius:12px;padding:13px;color:var(--tx);font:inherit;margin:6px 0}
+input,textarea{width:100%;background:transparent;border:1px solid var(--line);border-radius:12px;padding:13px;color:var(--tx);font:inherit;font-size:16px;margin:6px 0}
 input:focus,textarea:focus{outline:2px solid var(--lime)}
 label{font-size:12px;color:var(--mut);display:block;margin-top:10px}
-.cta{width:100%;background:var(--lime);color:#111;border:0;border-radius:14px;padding:15px;font-weight:700;font-size:16px;cursor:pointer;margin:8px 0}
+.cta,.ghost,.link{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.cta{width:100%;background:var(--lime);color:#111;border:0;border-radius:14px;min-height:48px;padding:12px 15px;font-weight:700;font-size:16px;cursor:pointer;margin:8px 0}
 .cta:disabled{opacity:.4}
-.ghost{flex:1;background:transparent;border:1px solid var(--line);color:var(--tx);border-radius:14px;padding:15px;cursor:pointer}
-.link{background:none;border:0;color:var(--lime);cursor:pointer;font:inherit;padding:8px 0}
-.ico{background:none;border:0;color:var(--mut);cursor:pointer;font-size:18px}
-.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin:16px 0}
+.ghost{flex:1;background:transparent;border:1px solid var(--line);color:var(--tx);border-radius:14px;min-height:48px;padding:12px;cursor:pointer;font:inherit}
+.ghost:disabled{opacity:.4}
+.link{background:none;border:0;color:var(--lime);cursor:pointer;font:inherit;padding:10px 0;min-height:44px}
+.ico{background:none;border:0;color:var(--mut);cursor:pointer;width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px}
+.ico:hover{background:var(--line)}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:16px 0}
 .day{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px 0;text-align:center;display:flex;flex-direction:column;gap:4px;align-items:center}
-.day b{font-size:20px}.day i{width:4px;height:4px;border-radius:50%;background:var(--lime)}
+.day b{font-size:clamp(15px,4.5vw,22px)}.day small{font-size:clamp(9px,2.8vw,12px)}.day i{width:4px;height:4px;border-radius:50%;background:var(--lime)}
 .day.on{background:var(--lime);color:#111}.day.on small{color:#111}.day.on i{background:#111}
-.chips{display:flex;gap:8px;overflow-x:auto;margin:14px 0;padding-bottom:4px}.chips.wrap{flex-wrap:wrap;overflow:visible}
-.chip{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:10px 16px;cursor:pointer;white-space:nowrap}
+.chips{display:flex;gap:8px;overflow-x:auto;margin:14px -16px;padding:0 16px 4px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
+.chips.wrap{flex-wrap:wrap;overflow:visible;margin:8px 0;padding:0}
+.chip{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:10px;min-height:44px;padding:0 16px;cursor:pointer;white-space:nowrap;font:inherit}
 .chip.on{background:var(--lime);color:#111;font-weight:700}
-.pick{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--tx);padding:10px 0;cursor:pointer}
-.detail{margin-top:12px;text-align:center}.detail p{text-align:left;color:var(--mut);font-size:14px}
-.sticky{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);width:100%;max-width:430px;background:var(--bg);border-top:1px solid var(--line);padding:10px 18px}
-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;display:flex;background:var(--bg);border-top:1px solid var(--line)}
-nav button{flex:1;background:none;border:0;color:var(--mut);padding:10px 0;font-size:11px;cursor:pointer;display:flex;flex-direction:column;gap:2px;align-items:center}
-nav button span{font-size:20px}nav button.on{color:var(--lime);font-weight:700}
-.stats{display:flex;justify-content:space-around;text-align:center}.stats b{display:block;font-size:26px;color:var(--lime)}
-.okbox{background:var(--line);color:var(--lime);width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center}
-.setbtn{width:44px;height:44px;border-radius:12px;background:var(--line);border:0;color:var(--tx);font-weight:700;cursor:pointer}
+.pick{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--tx);padding:12px 0;cursor:pointer;font:inherit}
+.detail{margin-top:12px;text-align:center}.detail p{text-align:left;color:var(--mut);font-size:14px;line-height:1.5}
+.sticky{position:fixed;left:0;right:0;bottom:calc(var(--nav) + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line);padding:10px 16px;z-index:4;display:flex;flex-direction:column;align-items:center}
+.sticky .cta{max-width:480px;margin:6px 0 0}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;background:var(--bg);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;height:var(--nav);background:none;border:0;color:var(--mut);font-size:11px;cursor:pointer;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;font-family:inherit}
+nav button.on{color:var(--lime);font-weight:700}
+.stats{display:flex;justify-content:space-around;text-align:center;gap:8px}.stats b{display:block;font-size:clamp(20px,6vw,28px);color:var(--lime)}
+.okbox{background:var(--line);color:var(--lime);width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.setbtn{width:48px;height:48px;border-radius:12px;background:var(--line);border:0;color:var(--tx);font-weight:700;cursor:pointer;font:inherit}
 .setbtn.on{background:var(--lime);color:#111}
-.overlay{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
-.modal{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;width:100%;max-width:400px;max-height:90vh;overflow-y:auto}
+.overlay{position:fixed;inset:0;background:#000a;display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.modal{background:var(--card);border:1px solid var(--line);border-radius:20px 20px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));width:100%;max-height:92dvh;overflow-y:auto}
 .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
-.auth{padding:60px 24px;display:flex;flex-direction:column;justify-content:center;min-height:100vh}
+.auth{width:100%;max-width:420px;margin:0 auto;padding:32px 20px;display:flex;flex-direction:column;justify-content:center;min-height:100dvh}
 .err{color:#ff6b6b;font-size:13px;margin:4px 0}
+/* ---------- TABLET ≥ 640px ---------- */
+@media (min-width:640px){
+ header{padding-left:24px;padding-right:24px}
+ main{padding:24px 24px calc(var(--nav) + 150px)}
+ .chips{margin:14px 0;padding:0}
+ .grid{grid-template-columns:1fr 1fr}
+ .overlay{align-items:center;padding:16px}
+ .modal{max-width:440px;border-radius:20px}
+ .auth{padding:48px 24px}
+}
+/* ---------- DESKTOP ≥ 960px: menu lateral ---------- */
+@media (min-width:960px){
+ .app.in{padding-left:var(--side)}
+ nav{top:0;right:auto;width:var(--side);flex-direction:column;justify-content:flex-start;gap:6px;padding:84px 12px 0;border-top:0;border-right:1px solid var(--line)}
+ nav button{flex:none;height:48px;flex-direction:row;justify-content:flex-start;gap:12px;padding:0 14px;border-radius:12px;font-size:14px}
+ nav button.on{background:var(--card)}
+ .sticky{left:var(--side);bottom:0}
+ main{padding-bottom:140px}
+ .auth{margin:0 auto;padding-left:0}
+}
 `;
