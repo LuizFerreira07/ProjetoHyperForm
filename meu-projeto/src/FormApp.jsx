@@ -1,24 +1,74 @@
 import { useState, useEffect, useRef } from "react";
+import { QRCodeSVG } from "qrcode.react";
+import { supabase } from "./supabaseClient";
 
-/* ============ GIFs ============
- Coloque seus GIFs em public/gifs/ (ex.: public/gifs/supino.gif)
- ou troque por URLs (ex.: ExerciseDB). Se o GIF não carregar, aparece um placeholder. */
-const DEFAULTS = [
-  { id: "e1", name: "Supino reto com barra", muscle: "Peito", sets: 4, reps: "8–12", rest: 90, gif: "/gifs/supino-reto.gif", how: "Deite no banco com os pés firmes no chão. Segure a barra um pouco além da largura dos ombros. Desça devagar até o meio do peito e empurre até estender os braços. Mantenha as escápulas para trás e use um spotter nas cargas altas." },
-  { id: "e2", name: "Supino inclinado com halteres", muscle: "Peito", sets: 3, reps: "10–12", rest: 90, gif: "/gifs/supino-inclinado.gif", how: "Banco a 30°. Desça os halteres até a altura do peito com cotovelos a 45° do tronco e suba contraindo o peitoral." },
-  { id: "e3", name: "Crucifixo no cabo", muscle: "Peito", sets: 3, reps: "12–15", rest: 60, gif: "/gifs/crucifixo-cabo.gif", how: "Cotovelos levemente flexionados. Traga as mãos à frente do peito em arco e retorne controlando a volta." },
-  { id: "e4", name: "Tríceps corda na polia", muscle: "Tríceps", sets: 3, reps: "12–15", rest: 60, gif: "/gifs/triceps-corda.gif", how: "Cotovelos colados ao corpo. Estenda os braços abrindo a corda no final e volte devagar." },
-  { id: "e5", name: "Tríceps testa", muscle: "Tríceps", sets: 3, reps: "10–12", rest: 75, gif: "/gifs/triceps-testa.gif", how: "Deitado, desça a barra em direção à testa dobrando só os cotovelos e estenda de volta." },
+/* ============ BIBLIOTECA DE EXERCÍCIOS ============
+ GIFs: arquivos em public/gifs/<id>.gif (veja public/gifs/LEIA-ME.txt)
+ ou defina VITE_GIF_BASE no .env para apontar para um CDN. */
+const GIF_BASE = import.meta.env?.VITE_GIF_BASE || "/gifs";
+const slug = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const EQUIP = ["Barra", "Halteres", "Polia", "Máquina", "Peso corporal"];
+const EQ_LABEL = { Barra: "com barra", Halteres: "com halteres", Polia: "na polia", "Máquina": "na máquina", "Peso corporal": "com peso corporal" };
+const EQ_CUE = { Barra: "Pegada firme e coluna neutra.", Halteres: "Use amplitude completa, sem balançar o tronco.", Polia: "Mantenha a tensão constante no cabo.", "Máquina": "Ajuste banco e apoios antes de começar.", "Peso corporal": "Controle o movimento, sem usar impulso." };
+const CUE = { Peito: "Escápulas para trás, controle a descida e contraia o peitoral na subida.", Costas: "Peito aberto, puxe com as costas e não com os braços, controlando a volta.", Ombros: "Ombros longe das orelhas, movimento controlado sem roubar com o tronco.", "Bíceps": "Cotovelos fixos ao lado do corpo, sem balançar, contraindo no topo.", "Tríceps": "Cotovelos parados, estenda por completo e volte devagar.", Pernas: "Joelhos alinhados com os pés, tronco firme e amplitude confortável.", Core: "Abdômen contraído, lombar protegida e respiração controlada." };
+// [músculo, movimento, equipamentos, séries, reps, descanso]
+const BASE = [
+ ["Peito","Supino reto",["Barra","Halteres","Máquina"],4,"8–12",90],["Peito","Supino inclinado",["Barra","Halteres","Máquina"],3,"10–12",90],["Peito","Supino declinado",["Barra","Halteres"],3,"10–12",90],
+ ["Peito","Crucifixo",["Halteres","Polia","Máquina"],3,"12–15",60],["Peito","Crucifixo inclinado",["Halteres","Polia"],3,"12–15",60],["Peito","Crossover",["Polia"],3,"12–15",60],["Peito","Flexão de braços",["Peso corporal"],3,"10–20",60],
+ ["Costas","Remada curvada",["Barra","Halteres"],4,"8–12",90],["Costas","Remada baixa",["Polia","Máquina"],3,"10–12",75],["Costas","Remada unilateral",["Halteres","Polia"],3,"10–12",75],["Costas","Remada cavalinho",["Barra","Máquina"],3,"10–12",75],
+ ["Costas","Puxada frontal",["Polia","Máquina"],4,"8–12",75],["Costas","Pulldown",["Polia"],3,"12–15",60],["Costas","Barra fixa",["Peso corporal"],3,"6–10",90],["Costas","Levantamento terra",["Barra","Halteres"],4,"5–8",120],
+ ["Ombros","Desenvolvimento",["Barra","Halteres","Máquina"],4,"8–12",90],["Ombros","Elevação lateral",["Halteres","Polia","Máquina"],3,"12–15",60],["Ombros","Elevação frontal",["Halteres","Polia","Barra"],3,"12–15",60],
+ ["Ombros","Crucifixo inverso",["Halteres","Polia","Máquina"],3,"12–15",60],["Ombros","Encolhimento",["Barra","Halteres"],3,"12–15",60],["Ombros","Face pull",["Polia"],3,"12–15",60],
+ ["Bíceps","Rosca direta",["Barra","Polia","Halteres"],3,"10–12",60],["Bíceps","Rosca alternada",["Halteres"],3,"10–12",60],["Bíceps","Rosca martelo",["Halteres","Polia"],3,"10–12",60],["Bíceps","Rosca scott",["Barra","Halteres","Máquina"],3,"10–12",60],["Bíceps","Rosca concentrada",["Halteres"],3,"10–12",60],
+ ["Tríceps","Tríceps testa",["Barra","Halteres","Polia"],3,"10–12",75],["Tríceps","Tríceps pulley",["Polia"],3,"12–15",60],["Tríceps","Tríceps corda",["Polia"],3,"12–15",60],["Tríceps","Tríceps francês",["Halteres","Polia"],3,"10–12",75],["Tríceps","Tríceps coice",["Halteres","Polia"],3,"12–15",60],["Tríceps","Mergulho",["Peso corporal","Máquina"],3,"8–12",75],
+ ["Pernas","Agachamento",["Barra","Halteres","Máquina","Peso corporal"],4,"8–12",120],["Pernas","Agachamento búlgaro",["Halteres","Peso corporal"],3,"10–12",90],["Pernas","Afundo",["Halteres","Barra","Peso corporal"],3,"10–12",90],["Pernas","Leg press",["Máquina"],4,"10–15",90],
+ ["Pernas","Cadeira extensora",["Máquina"],3,"12–15",60],["Pernas","Mesa flexora",["Máquina"],3,"12–15",60],["Pernas","Stiff",["Barra","Halteres"],3,"8–12",90],["Pernas","Elevação pélvica",["Barra","Halteres","Máquina"],4,"8–12",90],
+ ["Pernas","Panturrilha em pé",["Máquina","Halteres"],4,"12–20",45],["Pernas","Cadeira abdutora",["Máquina"],3,"12–15",60],["Pernas","Cadeira adutora",["Máquina"],3,"12–15",60],
+ ["Core","Abdominal supra",["Peso corporal","Máquina","Polia"],3,"12–20",45],["Core","Abdominal oblíquo",["Polia","Halteres","Peso corporal"],3,"12–20",45],["Core","Elevação de pernas",["Peso corporal"],3,"10–15",45],["Core","Prancha",["Peso corporal"],3,"30–60s",45],
 ];
+const LIB = BASE.flatMap(([muscle, mov, eqs, sets, reps, rest]) => eqs.map((equip) => {
+  const name = `${mov} ${EQ_LABEL[equip]}`;
+  return { id: slug(name), name, muscle, equip, sets, reps, rest, gif: `${GIF_BASE}/${slug(name)}.gif`, how: `${CUE[muscle]} ${EQ_CUE[equip]}` };
+}));
 const MUSCLES = ["Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Pernas", "Core"];
-const PLAN = ["e1", "e2", "e3", "e4", "e5"];
+const PLAN = ["supino-reto-com-barra", "supino-inclinado-com-halteres", "crucifixo-na-polia", "triceps-corda-na-polia", "triceps-testa-com-barra"];
 const DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
-/* ============ storage helpers ============ */
+/* ============ helpers ============ */
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-const hash = (s) => btoa(unescape(encodeURIComponent(s))); // demo apenas! use backend/bcrypt em produção
+const hash = (s) => btoa(unescape(encodeURIComponent(s))); // demo! use backend/bcrypt em produção
 const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+const dk = (d) => { d = new Date(d); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+function usePersist(key, make, uid) {
+  const [v, set] = useState(() => make(null));
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let on = true;
+    supabase.from("user_data").select("value").eq("user_id", uid).eq("key", key).maybeSingle()
+      .then(({ data }) => { if (on) { set(make(data?.value ?? null)); setReady(true); } });
+    return () => { on = false; };
+  }, [uid, key]);
+  useEffect(() => {
+    if (!ready) return;
+    const t = setTimeout(() => supabase.from("user_data").upsert({ user_id: uid, key, value: v }), 400);
+    return () => clearTimeout(t);
+  }, [v, ready]);
+  return [v, set, ready];
+}
+function progressions(hist) {
+  const best = {}, out = [];
+  [...hist].sort((a, b) => new Date(a.date) - new Date(b.date)).forEach((h) => (h.logs || []).forEach((l) => {
+    if (!l.sets.length) return;
+    const kg = Math.max(...l.sets.map((s) => s.kg));
+    const reps = Math.max(...l.sets.filter((s) => s.kg === kg).map((s) => s.reps));
+    const p = best[l.exId];
+    if (p && kg > p.kg) out.push({ date: h.date, name: l.name, type: "carga", from: p.kg, to: kg });
+    else if (p && kg === p.kg && reps > p.reps) out.push({ date: h.date, name: l.name, type: "reps", from: p.reps, to: reps, kg });
+    if (!p || kg > p.kg || (kg === p.kg && reps > p.reps)) best[l.exId] = { kg, reps };
+  }));
+  return out.reverse();
+}
 
 /* ============ ÍCONES (SVG inline, sem dependências) ============ */
 const P = {
@@ -36,6 +86,11 @@ const P = {
   play: "M6 4l14 8-14 8z",
   left: "M19 12H5 M12 19l-7-7 7-7",
   right: "M5 12h14 M12 5l7 7-7 7",
+  user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
+  trend: "M3 17l6-6 4 4 8-8 M15 7h6v6",
+  copy: "M9 9h11v11H9z M5 15H4V4h11v1",
+  minus: "M5 12h14",
+  trash: "M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14 M10 11v6 M14 11v6",
 };
 const Icon = ({ n, s = 18 }) => (
   <svg className="i" width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -53,108 +108,254 @@ function Gif({ src, alt, size = 64 }) {
 }
 
 /* ============ AUTH ============ */
-function Auth({ onLogin }) {
+function Auth() {
   const [mode, setMode] = useState("login");
-  const [f, setF] = useState({ name: "", email: "", pass: "", pass2: "" });
+  const [f, setF] = useState({ name: "", email: "", pass: "", pass2: "", role: "aluno", code: "" });
   const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
+  const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    const users = load("form_users", []);
+    setErr(""); setInfo("");
     const email = f.email.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) return setErr("E-mail inválido.");
     if (f.pass.length < 6) return setErr("A senha precisa ter ao menos 6 caracteres.");
-    if (mode === "signup") {
-      if (!f.name.trim()) return setErr("Informe seu nome.");
-      if (f.pass !== f.pass2) return setErr("As senhas não coincidem.");
-      if (users.some((u) => u.email === email)) return setErr("Este e-mail já está cadastrado.");
-      const u = { name: f.name.trim(), email, pass: hash(f.pass) };
-      save("form_users", [...users, u]);
-      onLogin({ name: u.name, email });
-    } else {
-      const u = users.find((u) => u.email === email && u.pass === hash(f.pass));
-      if (!u) return setErr("E-mail ou senha incorretos.");
-      onLogin({ name: u.name, email });
-    }
+    setBusy(true);
+    try {
+      if (mode === "signup") {
+        if (!f.name.trim()) return setErr("Informe seu nome.");
+        if (f.pass !== f.pass2) return setErr("As senhas não coincidem.");
+        let pc = "";
+        if (f.role === "aluno" && f.code.trim()) {
+          const { data } = await supabase.rpc("find_personal", { c: f.code });
+          if (!data?.length) return setErr("Código do personal não encontrado.");
+          pc = data[0].code;
+        }
+        const { data, error } = await supabase.auth.signUp({ email, password: f.pass, options: { data: { name: f.name.trim(), role: f.role, personal_code: pc } } });
+        if (error) return setErr(error.message);
+        if (!data.session) setInfo("Conta criada! Confirme o link enviado ao seu e-mail e depois entre.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password: f.pass });
+        if (error) setErr("E-mail ou senha incorretos.");
+      }
+    } finally { setBusy(false); }
   };
 
   return (
     <div className="auth">
       <div className="logo big"><span className="lg"><Icon n="dumbbell" s={18} /></span> HYPERFORM.</div>
       <h1>{mode === "login" ? "Bem-vindo de volta." : "Crie sua conta."}</h1>
-      <p className="sub">{mode === "login" ? "Entre para continuar seu treino." : "Comece a construir sua rotina."}</p>
+      <p className="sub">{mode === "login" ? "Entre para continuar seu treino." : "Escolha seu perfil e comece."}</p>
       <form onSubmit={submit}>
-        {mode === "signup" && <input placeholder="Nome" value={f.name} onChange={set("name")} />}
+        {mode === "signup" && (
+          <>
+            <div className="seg">
+              {[["aluno", "Sou aluno"], ["personal", "Sou personal"]].map(([v, l]) => (
+                <button type="button" key={v} className={"chip" + (f.role === v ? " on" : "")} onClick={() => setF({ ...f, role: v })}>{l}</button>
+              ))}
+            </div>
+            <input placeholder="Nome" value={f.name} onChange={set("name")} />
+          </>
+        )}
         <input placeholder="E-mail" type="email" value={f.email} onChange={set("email")} />
         <input placeholder="Senha" type="password" value={f.pass} onChange={set("pass")} />
         {mode === "signup" && <input placeholder="Confirmar senha" type="password" value={f.pass2} onChange={set("pass2")} />}
+        {mode === "signup" && f.role === "aluno" && <input placeholder="Código do personal (opcional)" value={f.code} onChange={set("code")} />}
         {err && <div className="err">{err}</div>}
-        <button className="cta" type="submit">{mode === "login" ? "Entrar" : "Inscrever-se"}</button>
+        {info && <div className="sub lime">{info}</div>}
+        <button className="cta" type="submit" disabled={busy}>{busy ? "Aguarde..." : mode === "login" ? "Entrar" : "Inscrever-se"}</button>
       </form>
-      <button className="link" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setErr(""); }}>
+      <button className="link" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setErr(""); setInfo(""); }}>
         {mode === "login" ? "Não tem conta? Inscreva-se" : "Já tem conta? Entrar"}
       </button>
     </div>
   );
 }
 
+/* ============ CALENDÁRIO ============ */
+function Calendar({ history, sched, setSched, start }) {
+  const [base, setBase] = useState(() => { const d = new Date(); d.setDate(1); return d; });
+  const [sel, setSel] = useState(dk(new Date()));
+  const todayK = dk(new Date());
+  const done = {};
+  history.forEach((h) => (done[dk(h.date)] ??= []).push(h));
+  const y = base.getFullYear(), mo = base.getMonth();
+  const total = new Date(y, mo + 1, 0).getDate();
+  const lead = (new Date(y, mo, 1).getDay() + 6) % 7;
+  const status = (k, wd) => (done[k] ? "trained" : k < todayK && k >= start && sched.includes(wd) ? "missed" : "");
+  let nT = 0, nM = 0;
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(<span key={"b" + i} />);
+  for (let d = 1; d <= total; d++) {
+    const dt = new Date(y, mo, d), k = dk(dt), st = status(k, (dt.getDay() + 6) % 7);
+    if (st === "trained") nT++; if (st === "missed") nM++;
+    cells.push(<button key={k} className={`cell ${st}${k === todayK ? " today" : ""}${k === sel ? " sel" : ""}`} onClick={() => setSel(k)}>{d}</button>);
+  }
+  const sd = new Date(sel + "T12:00:00"), swd = (sd.getDay() + 6) % 7;
+  return (
+    <div className="card">
+      <div className="row between">
+        <button className="ico" aria-label="Mês anterior" onClick={() => setBase(new Date(y, mo - 1, 1))}><Icon n="left" /></button>
+        <b style={{ textTransform: "capitalize" }}>{base.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</b>
+        <button className="ico" aria-label="Próximo mês" onClick={() => setBase(new Date(y, mo + 1, 1))}><Icon n="right" /></button>
+      </div>
+      <div className="cal">{DAYS.map((d) => <small key={d} style={{ textAlign: "center" }}>{d}</small>)}{cells}</div>
+      <div className="row" style={{ margin: "10px 0" }}>
+        <span className="tag lime">Treinou: {nT}</span><span className="tag" style={{ color: "#ff6b6b" }}>Faltou: {nM}</span>
+      </div>
+      <div className="detail" style={{ textAlign: "left" }}>
+        <b>{sd.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}</b>
+        {done[sel] ? done[sel].map((h, i) => <p key={i} className="lime">{h.title} · {h.sets} séries · {fmt(h.seconds)}</p>)
+          : <p>{status(sel, swd) === "missed" ? "Você faltou ao treino neste dia." : sched.includes(swd) ? (sel > todayK ? "Treino previsto." : sel === todayK ? "Treino de hoje." : "Sem treino registrado.") : "Dia de descanso."}</p>}
+      </div>
+      <label>Seus dias de treino (para contar faltas)</label>
+      <div className="chips wrap">{DAYS.map((d, i) => (
+        <button key={d} className={"chip" + (sched.includes(i) ? " on" : "")} style={{ padding: "0 12px" }} onClick={() => setSched(sched.includes(i) ? sched.filter((x) => x !== i) : [...sched, i])}>{d}</button>
+      ))}</div>
+    </div>
+  );
+}
+
 /* ============ PLANNER ============ */
-function Planner({ exercises, plan, setPlan, onStart, onAdd }) {
+function Step({ label, value, onChange, min, max, step, suffix = "" }) {
+  const clamp = (v) => Math.min(max, Math.max(min, v));
+  return (
+    <div className="step">
+      <label>{label}</label>
+      <div className="stp">
+        <button type="button" className="ico" aria-label="Diminuir" onClick={() => onChange(clamp(value - step))}><Icon n="minus" /></button>
+        <span><input type="number" inputMode="numeric" value={value} onChange={(e) => onChange(clamp(parseInt(e.target.value) || min))} />{suffix}</span>
+        <button type="button" className="ico" aria-label="Aumentar" onClick={() => onChange(clamp(value + step))}><Icon n="plus" /></button>
+      </div>
+    </div>
+  );
+}
+
+function Planner({ exercises, workouts, setWorkouts, onStart, history, sched, setSched, start }) {
+  const [openId, setOpenId] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [picker, setPicker] = useState(false);
+  const [q, setQ] = useState("");
+
   const today = new Date();
   const dow = (today.getDay() + 6) % 7;
   const monday = new Date(today); monday.setDate(today.getDate() - dow);
-  const list = plan.map((id) => exercises.find((e) => e.id === id)).filter(Boolean);
-  const sets = list.reduce((a, e) => a + e.sets, 0);
-  const [picking, setPicking] = useState(false);
 
+  const byId = (id) => exercises.find((e) => e.id === id);
+  const resolve = (w) => w.items.map((it) => { const e = byId(it.exId); return e ? { ...e, sets: it.sets, rest: it.rest } : null; }).filter(Boolean);
+  const upd = (id, fn) => setWorkouts(workouts.map((w) => (w.id === id ? fn(w) : w)));
+  const create = () => {
+    const name = newName.trim();
+    if (!name) return;
+    const w = { id: "w" + Date.now(), name, items: [] };
+    setWorkouts([...workouts, w]); setNewName(""); setCreating(false); setOpenId(w.id);
+  };
+  const w = workouts.find((x) => x.id === openId);
+
+  /* ---------- EDITOR DO TREINO ---------- */
+  if (w) {
+    const list = resolve(w);
+    const totalSets = list.reduce((a, e) => a + e.sets, 0);
+    const setItem = (i, patch) => upd(w.id, (x) => ({ ...x, items: x.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) }));
+    const shown = exercises.filter((e) => `${e.name} ${e.muscle} ${e.equip}`.toLowerCase().includes(q.toLowerCase()));
+    return (
+      <>
+        <button className="link" onClick={() => setOpenId(null)}><Icon n="left" s={16} /> Meus treinos</button>
+        <label>Nome do treino</label>
+        <input value={w.name} onChange={(e) => upd(w.id, (x) => ({ ...x, name: e.target.value }))} />
+        <div className="row between mt">
+          <h3>Exercícios <span className="tag">{w.items.length}</span></h3>
+          <button className="link" onClick={() => { setQ(""); setPicker(true); }}><Icon n="plus" s={16} /> Adicionar exercício</button>
+        </div>
+        {w.items.length === 0 && <p className="sub">Nenhum exercício ainda. Adicione qualquer exercício disponível no app.</p>}
+        <div className="grid">
+          {w.items.map((it, i) => {
+            const e = byId(it.exId);
+            if (!e) return null;
+            return (
+              <div className="card" key={it.exId}>
+                <div className="ex" style={{ cursor: "default" }}>
+                  <Gif src={e.gif} alt={e.name} />
+                  <div className="grow"><b>{e.name}</b><br /><span className="tag">{e.muscle}</span></div>
+                  <button className="ico" aria-label="Remover" onClick={() => upd(w.id, (x) => ({ ...x, items: x.items.filter((_, j) => j !== i) }))}><Icon n="x" /></button>
+                </div>
+                <div className="steps">
+                  <Step label="Séries" value={it.sets} min={1} max={20} step={1} onChange={(v) => setItem(i, { sets: v })} />
+                  <Step label="Descanso" value={it.rest} min={0} max={600} step={5} suffix="s" onChange={(v) => setItem(i, { rest: v })} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="sticky">
+          <small>{list.length} exercícios · {totalSets} séries</small>
+          <button className="cta" disabled={!list.length} onClick={() => onStart({ name: w.name.trim() || "Treino", list })}><Icon n="play" s={16} /> Iniciar treino</button>
+        </div>
+        {picker && (
+          <div className="overlay" onClick={() => setPicker(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="row between"><h3>Adicionar exercício</h3><button className="ico" aria-label="Fechar" onClick={() => setPicker(false)}><Icon n="x" /></button></div>
+              <input placeholder="Buscar exercícios..." value={q} onChange={(e) => setQ(e.target.value)} />
+              {shown.map((e) => {
+                const added = w.items.some((it) => it.exId === e.id);
+                return (
+                  <div className="ex pickrow" key={e.id} style={{ cursor: "default" }}>
+                    <Gif src={e.gif} alt={e.name} size={48} />
+                    <div className="grow"><b>{e.name}</b><br /><small>{e.muscle} · {e.equip} · {e.sets}×{e.reps}</small></div>
+                    <button className="ico" disabled={added} aria-label="Adicionar" style={added ? { color: "var(--lime)" } : {}}
+                      onClick={() => upd(w.id, (x) => ({ ...x, items: [...x.items, { exId: e.id, sets: e.sets, rest: e.rest }] }))}>
+                      <Icon n={added ? "check" : "plus"} />
+                    </button>
+                  </div>
+                );
+              })}
+              <button className="cta" onClick={() => setPicker(false)}>Concluído</button>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  /* ---------- LISTA DE TREINOS ---------- */
   return (
     <>
       <h1>Sua semana.<br />Seu ritmo.</h1>
-      <p className="sub">Crie uma rotina. Apareça. Fique mais forte.</p>
-      <div className="week">
-        {DAYS.map((d, i) => {
-          const dt = new Date(monday); dt.setDate(monday.getDate() + i);
+      <p className="sub">Crie seus treinos. Apareça. Fique mais forte.</p>
+      <Calendar history={history} sched={sched} setSched={setSched} start={start} />
+      <div className="row between mt">
+        <h3>Meus treinos <span className="tag">{workouts.length}</span></h3>
+        <button className="link" onClick={() => setCreating(!creating)}><Icon n="plus" s={16} /> Novo treino</button>
+      </div>
+      {creating && (
+        <div className="card">
+          <label>Nome do treino</label>
+          <input autoFocus placeholder="ex.: Costas e Bíceps" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} />
+          <button className="cta" onClick={create}>Criar treino</button>
+        </div>
+      )}
+      {workouts.length === 0 && !creating && <p className="sub">Você ainda não tem treinos. Toque em "Novo treino" para criar o primeiro.</p>}
+      <div className="grid">
+        {workouts.map((x) => {
+          const list = resolve(x);
+          const sets = list.reduce((a, e) => a + e.sets, 0);
           return (
-            <div key={d} className={"day" + (i === dow ? " on" : "")}>
-              <small>{d}</small><b>{dt.getDate()}</b><i />
+            <div className="card" key={x.id}>
+              <div className="row between">
+                <h2 style={{ margin: 0 }}>{x.name}</h2>
+                <button className="ico" aria-label="Excluir treino" onClick={() => window.confirm(`Excluir "${x.name}"?`) && setWorkouts(workouts.filter((y) => y.id !== x.id))}><Icon n="trash" /></button>
+              </div>
+              <small>{list.length} exercícios · {sets} séries · ~{Math.round(sets * 1.5)} min</small>
+              <div className="row" style={{ marginTop: 12, flexWrap: "nowrap" }}>
+                <button className="ghost" onClick={() => setOpenId(x.id)}><Icon n="pencil" s={16} /> Editar</button>
+                <button className="cta" style={{ margin: 0, flex: 1, width: "auto" }} disabled={!list.length} onClick={() => onStart({ name: x.name, list })}><Icon n="play" s={16} /> Iniciar</button>
+              </div>
             </div>
           );
         })}
-      </div>
-      <div className="card">
-        <div className="row"><span className="tag lime">{DAYS[dow]} · Hoje</span><span className="tag">Plano inicial</span></div>
-        <h2>Peito & Tríceps</h2>
-        <p className="sub">Consistência é seu músculo mais forte. Vamos treinar.</p>
-      </div>
-      <div className="row between mt">
-        <h3>A fila <span className="tag">{list.length}</span></h3>
-        <button className="link" onClick={() => setPicking(!picking)}><Icon n="plus" s={16} /> Adicionar exercício</button>
-      </div>
-      {picking && (
-        <div className="card">
-          {exercises.filter((e) => !plan.includes(e.id)).map((e) => (
-            <button key={e.id} className="pick" onClick={() => { setPlan([...plan, e.id]); setPicking(false); }}>{e.name}</button>
-          ))}
-          {exercises.every((e) => plan.includes(e.id)) && <p className="sub">Todos os exercícios já estão no plano.</p>}
-        </div>
-      )}
-      <div className="grid">
-      {list.map((e) => (
-        <div className="card ex" key={e.id}>
-          <Gif src={e.gif} alt={e.name} />
-          <div className="grow">
-            <b>{e.name}</b>
-            <div className="row"><span className="tag">{e.muscle}</span><small>{e.sets} séries × {e.reps} reps</small></div>
-            <small className="ic"><Icon n="clock" s={12} /> {e.rest}s de descanso</small>
-          </div>
-          <button className="ico" onClick={() => setPlan(plan.filter((x) => x !== e.id))} title="Remover" aria-label="Remover"><Icon n="x" /></button>
-        </div>
-      ))}
-      </div>
-      <div className="sticky">
-        <small>{list.length} exercícios · {sets} séries · ~{Math.round(sets * 1.5)} min</small>
-        <button className="cta" disabled={!list.length} onClick={() => onStart(list)}><Icon n="play" s={16} /> Iniciar treino</button>
       </div>
     </>
   );
@@ -164,9 +365,10 @@ function Planner({ exercises, plan, setPlan, onStart, onAdd }) {
 function Exercises({ exercises, setExercises }) {
   const [q, setQ] = useState("");
   const [m, setM] = useState("Todos");
+  const [eq, setEq] = useState("Todos");
   const [modal, setModal] = useState(null); // null | {…exercício}
   const [open, setOpen] = useState(null);
-  const shown = exercises.filter((e) => (m === "Todos" || e.muscle === m) && e.name.toLowerCase().includes(q.toLowerCase()));
+  const shown = exercises.filter((e) => (m === "Todos" || e.muscle === m) && (eq === "Todos" || e.equip === eq) && e.name.toLowerCase().includes(q.toLowerCase()));
 
   const saveEx = () => {
     if (!modal.name.trim()) return;
@@ -174,7 +376,7 @@ function Exercises({ exercises, setExercises }) {
     setExercises(modal.id ? exercises.map((e) => (e.id === ex.id ? ex : e)) : [...exercises, ex]);
     setModal(null);
   };
-  const blank = { name: "", muscle: "Peito", how: "", sets: 3, reps: "10–12", rest: 90, gif: "" };
+  const blank = { name: "", muscle: "Peito", equip: "Halteres", how: "", sets: 3, reps: "10–12", rest: 90, gif: "" };
 
   return (
     <>
@@ -185,6 +387,7 @@ function Exercises({ exercises, setExercises }) {
       <div className="chips">
         {["Todos", ...MUSCLES].map((x) => <button key={x} className={"chip" + (m === x ? " on" : "")} onClick={() => setM(x)}>{x}</button>)}
       </div>
+      <div className="chips">{["Todos", ...EQUIP].map((x) => <button key={x} className={"chip" + (eq === x ? " on" : "")} onClick={() => setEq(x)}>{x}</button>)}</div>
       <small className="sub">{shown.length} exercícios · Toque para ver as instruções</small>
       <div className="grid">
       {shown.map((e) => (
@@ -193,7 +396,7 @@ function Exercises({ exercises, setExercises }) {
             <Gif src={e.gif} alt={e.name} />
             <div className="grow">
               <b>{e.name}</b>
-              <div className="row"><span className="tag">{e.muscle}</span><small>{e.sets} séries × {e.reps} reps</small></div>
+              <div className="row"><span className="tag">{e.muscle}</span><span className="tag">{e.equip}</span><small>{e.sets}×{e.reps}</small></div>
               <small className="ic"><Icon n="clock" s={12} /> {e.rest}s de descanso</small>
             </div>
             <button className="ico" onClick={(ev) => { ev.stopPropagation(); setModal(e); }} aria-label="Editar"><Icon n="pencil" /></button>
@@ -215,6 +418,8 @@ function Exercises({ exercises, setExercises }) {
             <input placeholder="ex.: Stiff com halteres" value={modal.name} onChange={(e) => setModal({ ...modal, name: e.target.value })} />
             <label>Músculo alvo</label>
             <div className="chips wrap">{MUSCLES.map((x) => <button key={x} className={"chip" + (modal.muscle === x ? " on" : "")} onClick={() => setModal({ ...modal, muscle: x })}>{x}</button>)}</div>
+            <label>Equipamento</label>
+            <div className="chips wrap">{EQUIP.map((x) => <button key={x} className={"chip" + (modal.equip === x ? " on" : "")} onClick={() => setModal({ ...modal, equip: x })}>{x}</button>)}</div>
             <label>URL do GIF (opcional)</label>
             <input placeholder="https://.../exercicio.gif" value={modal.gif} onChange={(e) => setModal({ ...modal, gif: e.target.value })} />
             <label>Instruções</label>
@@ -236,135 +441,302 @@ function Exercises({ exercises, setExercises }) {
 function Progress({ history }) {
   const totalSets = history.reduce((a, h) => a + h.sets, 0);
   const mins = Math.floor(history.reduce((a, h) => a + h.seconds, 0) / 60);
+  const prog = progressions(history);
   return (
     <>
       <h1>Cada treino conta.</h1>
       <p className="sub">Um registro do trabalho que você fez.</p>
       <div className="card stats">
         <div><b>{history.length}</b><small>Treinos</small></div>
-        <div><b>{totalSets}</b><small>Séries concluídas</small></div>
-        <div><b>{mins} min</b><small>Tempo de treino</small></div>
+        <div><b>{totalSets}</b><small>Séries</small></div>
+        <div><b>{prog.length}</b><small>Progressões</small></div>
+        <div><b>{mins}m</b><small>Tempo</small></div>
+      </div>
+      <h3 className="mt">Progressão de carga e repetições</h3>
+      {prog.length === 0 && <p className="sub">Registre carga e repetições nos treinos. Quando você aumentar, aparece aqui.</p>}
+      <div className="grid">
+        {prog.map((p, i) => (
+          <div className="card ex" key={i} style={{ cursor: "default" }}>
+            <div className="okbox"><Icon n="trend" s={20} /></div>
+            <div className="grow">
+              <b>{p.name}</b><br />
+              <span className="lime">{p.type === "carga" ? `Carga: ${p.from} kg → ${p.to} kg (+${+(p.to - p.from).toFixed(2)} kg)` : `Repetições: ${p.from} → ${p.to} com ${p.kg} kg`}</span><br />
+              <small>{new Date(p.date).toLocaleDateString("pt-BR")}</small>
+            </div>
+          </div>
+        ))}
       </div>
       <h3 className="mt">Histórico de treinos</h3>
       {history.length === 0 && <p className="sub">Nenhum treino ainda. Bora começar!</p>}
       <div className="grid">
-      {[...history].reverse().map((h, i) => (
-        <div className="card ex" key={i}>
-          <div className="okbox"><Icon n="check" s={20} /></div>
-          <div className="grow"><b>{h.title}</b><br /><small>{new Date(h.date).toLocaleDateString("pt-BR")} · {h.sets} séries</small></div>
-          <b className="lime">{fmt(h.seconds)}</b>
-        </div>
-      ))}
+        {[...history].reverse().map((h, i) => (
+          <div className="card ex" key={i} style={{ cursor: "default" }}>
+            <div className="okbox"><Icon n="check" s={20} /></div>
+            <div className="grow"><b>{h.title}</b><br /><small>{new Date(h.date).toLocaleDateString("pt-BR")} · {h.sets} séries</small></div>
+            <b className="lime">{fmt(h.seconds)}</b>
+          </div>
+        ))}
       </div>
     </>
   );
 }
 
 /* ============ TREINO AO VIVO ============ */
-function Live({ list, onFinish, onCancel }) {
+function Live({ workout, history, onFinish, onCancel }) {
+  const list = workout.list;
+  const last = (id) => [...history].reverse().map((h) => (h.logs || []).find((l) => l.exId === id)).find(Boolean)?.sets || [];
   const [idx, setIdx] = useState(0);
-  const [done, setDone] = useState(() => list.map(() => 0));
-  const [elapsed, setElapsed] = useState(0);
-  const [rest, setRest] = useState(0);
-  const [resting, setResting] = useState(false);
-  const [restTotal, setRestTotal] = useState(0);
-  const ref = useRef();
+  const [rows, setRows] = useState(() => list.map((e) => { const l = last(e.id); return Array.from({ length: e.sets }, (_, n) => { const p = l[n] || l[l.length - 1]; return { kg: p ? p.kg : "", reps: p ? p.reps : parseInt(e.reps) || "", done: false }; }); }));
+  const [, tick] = useState(0);
+  const t = useRef({ elapsed: 0, restLeft: 0, restTotal: 0, pending: null });
   useEffect(() => {
-    ref.current = setInterval(() => {
-      setElapsed((s) => s + 1);
-      setResting((r) => { if (r) setRest((x) => x + 1); return r; });
+    const id = setInterval(() => {
+      const r = t.current;
+      r.elapsed++;
+      if (r.restLeft > 0) { r.restLeft--; r.restTotal++; if (r.restLeft === 0 && r.pending != null) { setIdx(r.pending); r.pending = null; } }
+      tick((n) => n + 1);
     }, 1000);
-    return () => clearInterval(ref.current);
+    return () => clearInterval(id);
   }, []);
 
-  const e = list[idx];
-  const mark = (n) => {
-    const d = [...done]; d[idx] = d[idx] === n + 1 ? n : n + 1; setDone(d);
-    if (d[idx] > done[idx]) { setResting(true); setRestTotal(0); setRest(0); }
+  const e = list[idx], r = t.current;
+  const setRow = (n, patch) => setRows(rows.map((rs, i) => (i === idx ? rs.map((x, j) => (j === n ? { ...x, ...patch } : x)) : rs)));
+  const toggle = (n) => {
+    const was = rows[idx][n].done;
+    setRow(n, { done: !was });
+    r.restLeft = !was && n < e.sets - 1 ? e.rest : 0;
   };
-  useEffect(() => { if (resting) setRestTotal((t) => t + 0); }, [resting]);
-  const finish = () => onFinish({ title: "Peito & Tríceps", date: new Date().toISOString(), sets: done.reduce((a, b) => a + b, 0), seconds: elapsed });
+  const skip = () => { r.restLeft = 0; if (r.pending != null) { setIdx(r.pending); r.pending = null; } tick((x) => x + 1); };
+  const next = () => {
+    if (e.rest > 0) { r.restLeft = e.rest; r.pending = idx + 1; tick((x) => x + 1); } else setIdx(idx + 1);
+  };
+  const go = (i) => { r.restLeft = 0; r.pending = null; setIdx(i); };
+  const finish = () => {
+    const logs = list.map((x, i) => ({ exId: x.id, name: x.name, sets: rows[i].filter((s) => s.done).map((s) => ({ kg: +s.kg || 0, reps: +s.reps || 0 })) })).filter((l) => l.sets.length);
+    onFinish({ title: workout.name, date: new Date().toISOString(), sets: logs.reduce((a, l) => a + l.sets.length, 0), seconds: r.elapsed, logs });
+  };
 
   return (
     <>
       <div className="row between">
-        <div><h2 style={{ margin: 0 }}>Seu treino está ativo</h2><small>Peito & Tríceps</small></div>
+        <div><h2 style={{ margin: 0 }}>Seu treino está ativo</h2><small>{workout.name}</small></div>
         <span className="tag lime"><span className="dot" /> Em andamento</span>
       </div>
       <div className="card stats">
-        <div><b>{fmt(elapsed)}</b><small>Total</small></div>
-        <div><b>{fmt(elapsed - rest)}</b><small>Ativo</small></div>
-        <div><b>{fmt(rest)}</b><small>Descanso</small></div>
+        <div><b>{fmt(r.elapsed)}</b><small>Total</small></div>
+        <div><b>{fmt(r.elapsed - r.restTotal)}</b><small>Ativo</small></div>
+        <div><b>{fmt(r.restTotal)}</b><small>Descanso</small></div>
       </div>
       <div className="card">
         <small>Exercício {idx + 1} de {list.length}</small>
         <div className="center"><Gif src={e.gif} alt={e.name} size={240} /></div>
         <h2>{e.name}</h2>
-        <small>{e.muscle} · {e.sets} séries × {e.reps} reps · {e.rest}s</small>
+        <small>{e.muscle} · {e.equip} · {e.sets} séries × {e.reps} reps · descanso de {e.rest}s</small>
         <p className="sub">{e.how}</p>
-        <div className="row">
-          {Array.from({ length: e.sets }).map((_, n) => (
-            <button key={n} className={"setbtn" + (n < done[idx] ? " on" : "")} onClick={() => mark(n)}>{n + 1}</button>
-          ))}
-        </div>
-        {resting && <button className="link" onClick={() => setResting(false)}><Icon n="clock" s={14} /> Descansando ({e.rest}s sugeridos) — toque para retomar</button>}
+        <div className="setrow head"><span /><small>Carga (kg)</small><small>Reps</small><span /></div>
+        {rows[idx].map((s, n) => (
+          <div className={"setrow" + (s.done ? " on" : "")} key={n}>
+            <b>{n + 1}</b>
+            <input type="number" inputMode="decimal" placeholder="kg" value={s.kg} onChange={(ev) => setRow(n, { kg: ev.target.value })} />
+            <input type="number" inputMode="numeric" placeholder="reps" value={s.reps} onChange={(ev) => setRow(n, { reps: ev.target.value })} />
+            <button className={"setbtn" + (s.done ? " on" : "")} aria-label="Concluir série" onClick={() => toggle(n)}><Icon n="check" s={20} /></button>
+          </div>
+        ))}
+        {r.restLeft > 0 && (
+          <div className="restbox">
+            <span className="ic"><Icon n="clock" s={16} /> {r.pending != null ? `Próximo: ${list[r.pending].name}` : "Descansando"}</span>
+            <b className="lime">{fmt(r.restLeft)}</b>
+            <button className="link" onClick={skip}>Pular descanso</button>
+          </div>
+        )}
       </div>
-      <div className="row mt">
-        <button className="ghost" disabled={idx === 0} onClick={() => setIdx(idx - 1)}><Icon n="left" s={16} /> Anterior</button>
+      <div className="row mt" style={{ flexWrap: "nowrap" }}>
+        <button className="ghost" disabled={idx === 0} onClick={() => go(idx - 1)}><Icon n="left" s={16} /> Anterior</button>
         {idx < list.length - 1
-          ? <button className="cta" onClick={() => setIdx(idx + 1)}>Próximo <Icon n="right" s={16} /></button>
-          : <button className="cta" onClick={finish}>Finalizar <Icon n="check" s={16} /></button>}
+          ? <button className="cta" style={{ flex: 1, width: "auto", margin: 0 }} disabled={r.pending != null} onClick={next}>Próximo <Icon n="right" s={16} /></button>
+          : <button className="cta" style={{ flex: 1, width: "auto", margin: 0 }} onClick={finish}>Finalizar <Icon n="check" s={16} /></button>}
       </div>
       <button className="link" onClick={onCancel}>Cancelar treino</button>
     </>
   );
 }
 
+/* ============ PERFIL DO ALUNO ============ */
+function Profile({ user, updateUser, onLogout }) {
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+  const [pt, setPt] = useState(null);
+  useEffect(() => {
+    if (!user.personal_code) return setPt(null);
+    supabase.rpc("find_personal", { c: user.personal_code }).then(({ data }) => setPt(data?.[0] || null));
+  }, [user.personal_code]);
+  const link = async () => {
+    const { data } = await supabase.rpc("find_personal", { c: code });
+    if (!data?.length) return setErr("Código não encontrado.");
+    await updateUser({ personal_code: data[0].code }); setCode(""); setErr("");
+  };
+  return (
+    <>
+      <h1>Seu perfil.</h1>
+      <div className="card"><b>{user.name}</b><br /><small>{user.email} · Aluno</small></div>
+      <h3 className="mt">Meu personal</h3>
+      {user.personal_code && pt ? (
+        <div className="card ex" style={{ cursor: "default" }}>
+          <div className="okbox"><Icon n="user" s={20} /></div>
+          <div className="grow"><b>{pt.name}</b><br /><small>Código {pt.code}</small></div>
+          <button className="ghost" style={{ flex: "none" }} onClick={() => updateUser({ personal_code: null })}>Desvincular</button>
+        </div>
+      ) : (
+        <div className="card">
+          <p className="sub">Digite o código que seu personal passou para ele acompanhar seus treinos.</p>
+          <input placeholder="Ex.: PT-AB12CD" value={code} onChange={(e) => setCode(e.target.value)} />
+          {err && <div className="err">{err}</div>}
+          <button className="cta" onClick={link}>Vincular ao personal</button>
+        </div>
+      )}
+      <button className="ghost" style={{ width: "100%", marginTop: 16 }} onClick={onLogout}><Icon n="logout" s={16} /> Sair</button>
+    </>
+  );
+}
+
+/* ============ ÁREA DO ALUNO ============ */
+function Student({ user, updateUser, onLogout }) {
+  const uid = user.id;
+  const [tab, setTab] = useState("planner");
+  const [exercises, setExercises, r1] = usePersist("ex2", (s) => (s ? [...s, ...LIB.filter((l) => !s.some((x) => x.id === l.id))] : LIB), uid);
+  const [workouts, setWorkouts, r2] = usePersist("workouts", (s) => s ?? [{ id: "w1", name: "Peito & Tríceps", items: PLAN.map((id) => { const e = LIB.find((x) => x.id === id); return { exId: id, sets: e.sets, rest: e.rest }; }) }], uid);
+  const [history, setHistory, r3] = usePersist("hist", (s) => s ?? [], uid);
+  const [sched, setSched, r4] = usePersist("sched", (s) => s ?? [0, 2, 4], uid);
+  const [start, , r5] = usePersist("start", (s) => s ?? dk(new Date()), uid);
+  const [live, setLive] = useState(null);
+  if (!(r1 && r2 && r3 && r4 && r5)) return <main><p className="sub">Carregando seus dados...</p></main>;
+  const tabs = [["planner", "calendar", "Treinos"], ["exercises", "dumbbell", "Exercícios"], ["progress", "chart", "Progresso"], ["profile", "user", "Perfil"]];
+  return (
+    <>
+      <main>
+        {live ? <Live workout={live} history={history} onCancel={() => setLive(null)} onFinish={(h) => { setHistory([...history, h]); setLive(null); setTab("progress"); }} />
+          : tab === "planner" ? <Planner exercises={exercises} workouts={workouts} setWorkouts={setWorkouts} onStart={setLive} history={history} sched={sched} setSched={setSched} start={start} />
+          : tab === "exercises" ? <Exercises exercises={exercises} setExercises={setExercises} />
+          : tab === "progress" ? <Progress history={history} />
+          : <Profile user={user} updateUser={updateUser} onLogout={onLogout} />}
+      </main>
+      <Nav tabs={tabs} tab={live ? null : tab} onTab={(k) => { setLive(null); setTab(k); }} />
+    </>
+  );
+}
+const Nav = ({ tabs, tab, onTab }) => (
+  <nav>{tabs.map(([k, i, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => onTab(k)}><Icon n={i} s={22} /><span>{l}</span></button>)}</nav>
+);
+
+/* ============ ÁREA DO PERSONAL ============ */
+function Personal({ user, onLogout }) {
+  const [tab, setTab] = useState("students");
+  const [open, setOpen] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [students, setStudents] = useState([]);
+  const [hists, setHists] = useState({});
+  useEffect(() => {
+    (async () => {
+      const { data: st } = await supabase.from("profiles").select("*").eq("role", "aluno").eq("personal_code", user.code);
+      setStudents(st || []);
+      if (st?.length) {
+        const { data: ud } = await supabase.from("user_data").select("user_id,value").eq("key", "hist").in("user_id", st.map((s) => s.id));
+        setHists(Object.fromEntries((ud || []).map((r) => [r.user_id, r.value || []])));
+      }
+    })();
+  }, [user.code, tab]);
+  const copy = () => { try { navigator.clipboard.writeText(user.code); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
+  return (
+    <>
+      <main>
+        {tab === "students" ? (
+          <>
+            <h1>Seus alunos.</h1>
+            <p className="sub">{students.length} aluno(s) vinculado(s). Compartilhe seu código para adicionar mais.</p>
+            {students.length === 0 && <div className="card"><p className="sub">Nenhum aluno ainda. Passe o código ou o QR da aba "Meu código".</p></div>}
+            <div className="grid">
+              {students.map((s) => {
+                const hist = hists[s.id] || [];
+                const lastH = hist[hist.length - 1];
+                const prog = progressions(hist);
+                const days = lastH ? Math.floor((Date.now() - new Date(lastH.date)) / 864e5) : null;
+                return (
+                  <div className="card" key={s.email}>
+                    <div className="ex" onClick={() => setOpen(open === s.email ? null : s.email)}>
+                      <div className="okbox"><Icon n="user" s={20} /></div>
+                      <div className="grow"><b>{s.name}</b><br /><small>{s.email}</small></div>
+                    </div>
+                    <div className="row" style={{ marginTop: 10 }}>
+                      <span className="tag lime">{hist.length} treinos</span>
+                      <span className="tag">{prog.length} progressões</span>
+                      <span className="tag">{lastH ? (days === 0 ? "Treinou hoje" : `Último treino há ${days}d`) : "Sem treinos"}</span>
+                    </div>
+                    {open === s.email && (
+                      <div className="detail" style={{ textAlign: "left" }}>
+                        <b>Progressões recentes</b>
+                        {prog.slice(0, 4).map((p, i) => <p key={i}>{p.name}: <span className="lime">{p.type === "carga" ? `${p.from} → ${p.to} kg` : `${p.from} → ${p.to} reps (${p.kg} kg)`}</span></p>)}
+                        {prog.length === 0 && <p>Nenhuma ainda.</p>}
+                        <b>Últimos treinos</b>
+                        {[...hist].reverse().slice(0, 5).map((h, i) => <p key={i}>{new Date(h.date).toLocaleDateString("pt-BR")} · {h.title} · {h.sets} séries · {fmt(h.seconds)}</p>)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <>
+            <h1>Meu código.</h1>
+            <p className="sub">O aluno digita o código no cadastro ou no perfil dele, ou lê o QR.</p>
+            <div className="card center" style={{ flexDirection: "column", gap: 14 }}>
+              <div className="qr"><QRCodeSVG value={user.code} size={200} /></div>
+              <div className="code">{user.code}</div>
+              <button className="ghost" style={{ flex: "none", width: "100%" }} onClick={copy}><Icon n={copied ? "check" : "copy"} s={16} /> {copied ? "Copiado" : "Copiar código"}</button>
+            </div>
+            <div className="card"><b>{user.name}</b><br /><small>{user.email} · Personal</small></div>
+            <button className="ghost" style={{ width: "100%", marginTop: 8 }} onClick={onLogout}><Icon n="logout" s={16} /> Sair</button>
+          </>
+        )}
+      </main>
+      <Nav tabs={[["students", "user", "Alunos"], ["code", "dumbbell", "Meu código"]]} tab={tab} onTab={setTab} />
+    </>
+  );
+}
+
 /* ============ APP ============ */
 export default function FormApp() {
-  const [user, setUser] = useState(() => load("form_session", null));
-  const [tab, setTab] = useState("planner");
-  const [exercises, setExercises] = useState(() => load("form_ex", DEFAULTS));
-  const [plan, setPlan] = useState(() => load("form_plan", PLAN));
-  const [history, setHistory] = useState(() => load("form_hist", []));
-  const [live, setLive] = useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [light, setLight] = useState(false);
-
-  useEffect(() => save("form_ex", exercises), [exercises]);
-  useEffect(() => save("form_plan", plan), [plan]);
-  useEffect(() => save("form_hist", history), [history]);
-
-  const login = (u) => { save("form_session", u); setUser(u); };
-  const logout = () => { save("form_session", null); setUser(null); setLive(null); };
-
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!session) { setUser(null); setLoading(false); return; }
+      setTimeout(async () => {
+        const { data: p } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
+        setUser(p); setLoading(false);
+      }, 0);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+  const logout = () => supabase.auth.signOut();
+  const updateUser = async (patch) => {
+    const { error } = await supabase.from("profiles").update(patch).eq("id", user.id);
+    if (!error) setUser({ ...user, ...patch });
+  };
   return (
     <div className={"app" + (user ? " in" : "") + (light ? " light" : "")}>
       <style>{CSS}</style>
-      {!user ? <Auth onLogin={login} /> : (
+      {loading ? <div className="auth"><p className="sub">Carregando...</p></div> : !user ? <Auth /> : (
         <>
           <header>
             <div className="logo"><span className="lg"><Icon n="dumbbell" s={18} /></span> HYPERFORM.</div>
             <div className="row">
-              <button className="ico" onClick={() => setLight(!light)} title="Tema" aria-label="Alternar tema"><Icon n={light ? "moon" : "sun"} /></button>
-              <button className="ico" onClick={logout} title={`Sair (${user.name})`} aria-label="Sair"><Icon n="logout" /></button>
+              <button className="ico" onClick={() => setLight(!light)} aria-label="Alternar tema"><Icon n={light ? "moon" : "sun"} /></button>
+              <button className="ico" onClick={logout} aria-label="Sair"><Icon n="logout" /></button>
             </div>
           </header>
-          <main>
-            {live ? (
-              <Live list={live} onCancel={() => setLive(null)} onFinish={(h) => { setHistory([...history, h]); setLive(null); setTab("progress"); }} />
-            ) : tab === "planner" ? (
-              <Planner exercises={exercises} plan={plan} setPlan={setPlan} onStart={setLive} />
-            ) : tab === "exercises" ? (
-              <Exercises exercises={exercises} setExercises={setExercises} />
-            ) : (
-              <Progress history={history} />
-            )}
-          </main>
-          <nav>
-            {[["planner", "calendar", "Planner"], ["exercises", "dumbbell", "Exercícios"], ["progress", "chart", "Progresso"]].map(([k, i, l]) => (
-              <button key={k} className={tab === k && !live ? "on" : ""} onClick={() => { setLive(null); setTab(k); }}><Icon n={i} s={22} /><span>{l}</span></button>
-            ))}
-          </nav>
+          {user.role === "personal" ? <Personal key={user.id} user={user} onLogout={logout} /> : <Student key={user.id} user={user} updateUser={updateUser} onLogout={logout} />}
         </>
       )}
     </div>
@@ -431,6 +803,23 @@ nav button.on{color:var(--lime);font-weight:700}
 .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .auth{width:100%;max-width:420px;margin:0 auto;padding:32px 20px;display:flex;flex-direction:column;justify-content:center;min-height:100dvh}
 .err{color:#ff6b6b;font-size:13px;margin:4px 0}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.stp{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid var(--line);border-radius:12px;margin-top:4px}
+.stp span{display:flex;align-items:center;gap:2px;color:var(--mut);font-size:13px}
+.stp input{width:52px;text-align:center;margin:0;padding:8px 0;border:0;background:transparent;font-weight:700}
+.stp input::-webkit-inner-spin-button{-webkit-appearance:none}
+.stp .ico{width:40px;height:44px}
+.pickrow{padding:10px 0;border-bottom:1px solid var(--line)}
+.restbox{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px;padding:6px 12px;background:var(--bg);border:1px solid var(--line);border-radius:12px}
+.restbox b{font-size:22px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:8px}
+.cell{aspect-ratio:1;min-height:36px;border-radius:10px;background:var(--bg);border:1px solid var(--line);color:var(--tx);cursor:pointer;font:inherit}
+.cell.trained{background:var(--lime);color:#111;font-weight:700;border-color:var(--lime)}
+.cell.missed{border-color:#ff6b6b;color:#ff6b6b}.cell.today{outline:2px solid var(--lime)}.cell.sel{box-shadow:0 0 0 2px var(--tx)}
+.setrow{display:grid;grid-template-columns:22px 1fr 1fr 48px;gap:8px;align-items:center;margin:8px 0}
+.setrow input{margin:0;text-align:center;padding:10px 4px}.setrow.on input{border-color:var(--lime)}.setrow.head{margin:12px 0 0}.setrow.head small{text-align:center}
+.qr{background:#fff;padding:14px;border-radius:16px;line-height:0}.code{font-size:28px;font-weight:800;letter-spacing:2px;color:var(--lime)}
+.seg{display:flex;gap:8px;margin-bottom:6px}.seg .chip{flex:1}
 /* ---------- TABLET ≥ 640px ---------- */
 @media (min-width:640px){
  header{padding-left:24px;padding-right:24px}
